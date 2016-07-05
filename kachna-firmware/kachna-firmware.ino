@@ -14,18 +14,6 @@
 #define TURNTABLE_SENSOR_PIN 20
 #define TURNTABLE_STRIPES 64
 
-
-enum SHOCK_STATE {
-  OUTSIDE,
-  SHOCKING,
-  PAUSE
-} shock;
-unsigned long shock_change;
-unsigned shock_length = 0;
-unsigned pause_length = 0;
-boolean shock_level_changed = false;
-int shock_level = 0;
-
 #define TURNTABLE_PID_FREQUENCY 100
 unsigned long pid_change = 0;
 int pConstant, iConstant, dConstant, previous_error, integral = 0;
@@ -68,33 +56,10 @@ void setup() {
   iConstant = (int) EEPROM.read(2) + ((int) EEPROM.read(3) << 8);
   dConstant = (int) EEPROM.read(4) + ((int) EEPROM.read(5) << 8);
 
-  shock = SHOCKING;
-
   Serial.begin(9600);
 }
 
 void loop() {
-  // Shock handling
-  if (shock_level_changed) {
-    shock_level_changed = false;
-    if (shock == SHOCKING) {
-      write_shock(shock_level);
-    }
-  }
-  if (shock == SHOCKING) {
-    if (millis() >= shock_change + shock_length) {
-      shock_change = millis();
-      write_shock(0);
-      shock = PAUSE;
-    }
-  } else if (shock == PAUSE) {
-    if (millis() >= shock_change + pause_length) {
-      shock_change = millis();
-      write_shock(shock_level);
-      shock = SHOCKING;
-    }
-  }
-
   // Motor PID control
   if (pid_change != 0 && millis() > pid_change + TURNTABLE_PID_FREQUENCY) {
     pid_change = millis();
@@ -129,7 +94,6 @@ void loop() {
           break;
         case 11: // SHUT-OFF
           write_shock(0);
-          shock = OUTSIDE;
 
           digitalWrite(LED_PIN, LOW);
           Serial.print("ZZ.");
@@ -139,37 +103,12 @@ void loop() {
           Serial.print(".");
           break;
         case 20: // SHOCK LEVEL
-          if (shock_length != 0 && pause_length != 0) {
-            if (arg == 0) {
-              write_shock(0);
-              shock = OUTSIDE;
-              Serial.print("YA.");
-            } else if (arg > 0 && arg < 8) {
-              shock_level = arg;
-              if (shock == SHOCKING) {
-                shock_change = millis();
-                shock_level_changed = true;
-                Serial.print("YA.");
-              } else if (shock == OUTSIDE) {
-                shock_change = millis();
-                write_shock(shock_level);
-                shock = SHOCKING;
-                Serial.print("YA.");
-              }
-            } else {
-              Serial.print("IA!");
-            }
+          if (arg >= 0 && arg < 8) {
+            write_shock(arg);
+            Serial.print("YA.");
           } else {
-            Serial.print("IS!");
+            Serial.print("IA!");
           }
-          break;
-        case 21: // SHOCK LENGTH
-          shock_length = arg;
-          Serial.print("YA.");
-          break;
-        case 22: // PAUSE LENGTH
-          pause_length = arg;
-          Serial.print("YA.");
           break;
         case 30: // LED
           if (arg == 0) {
