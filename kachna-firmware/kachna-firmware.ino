@@ -92,10 +92,13 @@ void loop() {
           delay(100);
           digitalWrite(LED_BUILTIN, LOW);
           break;
-        case 11: // SHUT-OFF
+        case 11: // SHUT-OFF / RESET
           write_shock(0);
-
+          analogWrite(TURNTABLE_ENABLE_PIN, 0);
+          digitalWrite(TURNTABLE_A_PIN, LOW);
+          digitalWrite(TURNTABLE_B_PIN, LOW);
           digitalWrite(LED_PIN, LOW);
+          target_delta = 0;
           Serial.print("ZZ.");
           break;
         case 12: // DEBUG ECHO
