@@ -14,6 +14,22 @@
 #define TURNTABLE_SENSOR_PIN 20
 #define TURNTABLE_STRIPES 64
 
+#define FEEDER_MOTOR_PIN 10
+#define FEEDER_SENS_MECH 53
+#define FEEDER_SENS_OPTO 39
+
+enum {
+  STANDBY,
+  DROPPING,
+  RUNNING,
+  QUEUED
+} FEEDER_STATE;
+
+bool feederCheck() {
+  return digitalRead(FEEDER_SENS_MECH) == 0;
+}
+
+
 #define TURNTABLE_PID_FREQUENCY 100
 unsigned long pid_change = 0;
 int pConstant, iConstant, dConstant, previous_error, integral = 0;
@@ -49,14 +65,23 @@ void setup() {
   pinMode(SHOCK_0_PIN, OUTPUT);
   pinMode(SHOCK_1_PIN, OUTPUT);
   pinMode(SHOCK_2_PIN, OUTPUT);
+  pinMode(FEEDER_MOTOR_PIN, OUTPUT);
+  pinMode(FEEDER_SENS_MECH, INPUT_PULLUP);
+  pinMode(FEEDER_SENS_OPTO, INPUT);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(21, OUTPUT);
 
   pConstant = (int) EEPROM.read(0) + ((int) EEPROM.read(1) << 8);
   iConstant = (int) EEPROM.read(2) + ((int) EEPROM.read(3) << 8);
   dConstant = (int) EEPROM.read(4) + ((int) EEPROM.read(5) << 8);
 
   Serial.begin(9600);
+
+  if (!feederCheck()) {
+    digitalWrite(FEEDER_MOTOR_PIN, HIGH);
+    FEEDER_STATE = RUNNING;
+  } else {
+    FEEDER_STATE = STANDBY;
+  }
 }
 
 void loop() {
@@ -72,8 +97,28 @@ void loop() {
     int error = target_delta - average_delta;
     integral = integral + error * TURNTABLE_PID_FREQUENCY;
     int derivative = (error - previous_error) / TURNTABLE_PID_FREQUENCY;
-    analogWrite(TURNTABLE_ENABLE_PIN, pConstant/10000.0*error + iConstant/10000.0*integral + dConstant/10000.0*derivative);
+    analogWrite(TURNTABLE_ENABLE_PIN, pConstant / 10000.0 * error + iConstant / 10000.0 * integral + dConstant / 10000.0 * derivative);
     previous_error = error;
+  }
+
+  // Feeder logic
+  switch (FEEDER_STATE) {
+    case DROPPING:
+      if (digitalRead(FEEDER_SENS_MECH) == 1) {
+        FEEDER_STATE = RUNNING;
+      }
+      break;
+    case QUEUED:
+      if (feederCheck()) {
+        FEEDER_STATE = RUNNING;
+      }
+      break;
+    case RUNNING:
+      if (feederCheck()) {
+        digitalWrite(FEEDER_MOTOR_PIN, LOW);
+        FEEDER_STATE = STANDBY;
+      }
+      break;
   }
 
   // Serial handling
@@ -171,6 +216,22 @@ void loop() {
         case 45: // SET PWM DIRECTLY
           pid_change = 0;
           analogWrite(TURNTABLE_ENABLE_PIN, arg);
+          Serial.print("YA.");
+          break;
+        case 50:
+          switch (FEEDER_STATE) {
+            case STANDBY:
+              digitalWrite(FEEDER_MOTOR_PIN, HIGH);
+              FEEDER_STATE = DROPPING;
+              break;
+            case DROPPING:
+            case RUNNING:
+              FEEDER_STATE = QUEUED;
+              break;
+            case QUEUED:
+              // do nothing, don't queue more food
+              break;
+          }
           Serial.print("YA.");
           break;
         default: // UNKNOWN COMMAND
