@@ -29,6 +29,11 @@ bool feederCheck() {
   return digitalRead(FEEDER_SENS_MECH) == 0;
 }
 
+long currentStripes = 0;
+
+void update_pos() {
+  currentStripes = (currentStripes + 1) % 65535;
+}
 
 #define TURNTABLE_PID_FREQUENCY 100
 unsigned long pid_change = 0;
@@ -57,7 +62,8 @@ void write_shock(int mA) {
 }
 
 void setup() {
-  attachInterrupt(digitalPinToInterrupt(TURNTABLE_SENSOR_PIN), update_speed, RISING);
+  //  attachInterrupt(digitalPinToInterrupt(TURNTABLE_SENSOR_PIN), update_speed, RISING);
+  attachInterrupt(digitalPinToInterrupt(TURNTABLE_SENSOR_PIN), update_pos, RISING);
   pinMode(TURNTABLE_ENABLE_PIN, OUTPUT);
   pinMode(TURNTABLE_A_PIN, OUTPUT);
   pinMode(TURNTABLE_B_PIN, OUTPUT);
@@ -85,21 +91,21 @@ void setup() {
 }
 
 void loop() {
-  // Motor PID control
-  if (pid_change != 0 && millis() > pid_change + TURNTABLE_PID_FREQUENCY) {
-    pid_change = millis();
-
-    unsigned average_delta = 0;
-    for (int i = 0; i < TURNTABLE_MEAN_LENGTH; i++) {
-      average_delta += turntable_deltas[i];
-    }
-    average_delta /= TURNTABLE_MEAN_LENGTH;
-    int error = target_delta - average_delta;
-    integral = integral + error * TURNTABLE_PID_FREQUENCY;
-    int derivative = (error - previous_error) / TURNTABLE_PID_FREQUENCY;
-    analogWrite(TURNTABLE_ENABLE_PIN, pConstant / 10000.0 * error + iConstant / 10000.0 * integral + dConstant / 10000.0 * derivative);
-    previous_error = error;
-  }
+//  // Motor PID control
+//  if (pid_change != 0 && millis() > pid_change + TURNTABLE_PID_FREQUENCY) {
+//    pid_change = millis();
+//
+//    unsigned average_delta = 0;
+//    for (int i = 0; i < TURNTABLE_MEAN_LENGTH; i++) {
+//      average_delta += turntable_deltas[i];
+//    }
+//    average_delta /= TURNTABLE_MEAN_LENGTH;
+//    int error = target_delta - average_delta;
+//    integral = integral + error * TURNTABLE_PID_FREQUENCY;
+//    int derivative = (error - previous_error) / TURNTABLE_PID_FREQUENCY;
+//    analogWrite(TURNTABLE_ENABLE_PIN, pConstant / 10000.0 * error + iConstant / 10000.0 * integral + dConstant / 10000.0 * derivative);
+//    previous_error = error;
+//  }
 
   // Feeder logic
   switch (FEEDER_STATE) {
@@ -169,11 +175,11 @@ void loop() {
             Serial.print("IA!");
           }
           break;
-        case 40: // TURNTABLE SPEED
-          target_delta = arg * 1000 / TURNTABLE_STRIPES;
-          pid_change = 1;
-          Serial.print("YA.");
-          break;
+//        case 40: // TURNTABLE SPEED
+//          target_delta = arg * 1000 / TURNTABLE_STRIPES;
+//          pid_change = 1;
+//          Serial.print("YA.");
+//          break;
         case 41: // TURNTABLE DIRECTION
           switch (arg) {
             case 0:
@@ -195,30 +201,30 @@ void loop() {
               Serial.print("IA!");
           }
           break;
-        case 42: // UPDATE P CONSTANT
-          EEPROM.update(0, message[1]);
-          EEPROM.update(1, message[2]);
-          Serial.print("YA.");
-          pConstant = arg;
-          break;
-        case 43: // UPDATE I CONSTANT
-          EEPROM.update(2, message[1]);
-          EEPROM.update(3, message[2]);
-          iConstant = arg;
-          Serial.print("YA.");
-          break;
-        case 44: // UPDATE D CONSTANT
-          EEPROM.update(4, message[1]);
-          EEPROM.update(5, message[2]);
-          dConstant = arg;
-          Serial.print("YA.");
-          break;
+//        case 42: // UPDATE P CONSTANT
+//          EEPROM.update(0, message[1]);
+//          EEPROM.update(1, message[2]);
+//          Serial.print("YA.");
+//          pConstant = arg;
+//          break;
+//        case 43: // UPDATE I CONSTANT
+//          EEPROM.update(2, message[1]);
+//          EEPROM.update(3, message[2]);
+//          iConstant = arg;
+//          Serial.print("YA.");
+//          break;
+//        case 44: // UPDATE D CONSTANT
+//          EEPROM.update(4, message[1]);
+//          EEPROM.update(5, message[2]);
+//          dConstant = arg;
+//          Serial.print("YA.");
+//          break;
         case 45: // SET PWM DIRECTLY
           pid_change = 0;
           analogWrite(TURNTABLE_ENABLE_PIN, arg);
           Serial.print("YA.");
           break;
-        case 50:
+        case 50: // FEEDER
           switch (FEEDER_STATE) {
             case STANDBY:
               digitalWrite(FEEDER_MOTOR_PIN, HIGH);
@@ -233,6 +239,11 @@ void loop() {
               break;
           }
           Serial.print("YA.");
+          break;
+        case 60: // POSITION
+          Serial.write(currentStripes & 0xff);
+          Serial.write((currentStripes >> 8) & 0xff);
+          Serial.print(".");
           break;
         default: // UNKNOWN COMMAND
           Serial.print("UC!");
